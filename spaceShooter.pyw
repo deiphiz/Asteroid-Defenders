@@ -7,6 +7,7 @@ FPS = 30
 TEXTCOLOR = (100, 255, 100)
 EXPLOSIONTEXTCOLOR = (255, 255, 255)
 BACKGROUNDCOLOR = (0, 0, 0)
+HPWIDTH = 200
 BULLETSPEED = 20 # I wouldn't set this any higher than BADDIECOLLISION
 BULLETRATE = 8 # Setting this too low causes the program to crash when firing large barrages of bullets. Not sure why yet.
 MAXBULLETS = 20
@@ -59,10 +60,10 @@ pygame.display.set_icon(pygame.image.load('data\\player.png'))
 pygame.display.set_caption('Asteroid Defender')
 pygame.mouse.set_visible(False)
 
-# set up font
+# set up fonts
 font = pygame.font.SysFont("OCR A Extended", 24)
 titleFont = pygame.font.SysFont("OCR A Extended", 32)
-
+hudFont = pygame.font.SysFont("OCR A Extended", 18)
 
 # set up sounds
 gameOverSound = pygame.mixer.Sound('data\\gameover.wav')
@@ -73,6 +74,8 @@ explosionSound = pygame.mixer.Sound('data\\explosion.wav')
 explosionSound.set_volume(0.075)
 hurtSound = pygame.mixer.Sound('data\\hurt.wav')
 hurtSound.set_volume(0.2)
+baseHurtSound = pygame.mixer.Sound('data\\basehurt.wav')
+baseHurtSound.set_volume(0.2)
 pygame.mixer.music.load('data\\music2.ogg')
 pygame.mixer.music.set_volume(0.2)
 
@@ -89,6 +92,10 @@ explosionFrame1 = pygame.image.load('data\\explosion1.png')
 explosionFrame1Scaled = pygame.transform.scale(explosionFrame1, (EXPLOSIONSIZE, EXPLOSIONSIZE))
 explosionFrame2 = pygame.image.load('data\\explosion2.png')
 explosionFrame2Scaled = pygame.transform.scale(explosionFrame2, (EXPLOSIONSIZE, EXPLOSIONSIZE))
+baseImage = pygame.image.load('data\\spacestation.png')
+baseScaled = pygame.transform.scale(baseImage, (WINDOWWIDTH, WINDOWWIDTH))
+baseHurtImage = pygame.image.load('data\\spacestationhurt.png')
+baseHurtScaled = pygame.transform.scale(baseHurtImage, (WINDOWWIDTH, WINDOWWIDTH))
 
 # show the "Start" screen
 windowSurface.blit(backgroundScaled, (0, 0))
@@ -124,6 +131,7 @@ while True:
 	playerHealth = PLAYERHEALTH
 	baseHealth = BASEHEALTH
 	hurt = False
+	baseHurt = False
 	invincible = False
 	invincibleTime = INVINCIBLETIME
 	moveLeft = moveRight = moveUp = moveDown = False
@@ -216,6 +224,7 @@ while True:
 			baddieAddCounter = 0
 			newBaddie = {'rect': pygame.Rect(random.randint(0, WINDOWWIDTH-BADDIESIZE), 0 - BADDIESIZE, BADDIECOLLISION, BADDIECOLLISION),
 						'speed': random.randint(BADDIEMINSPEED, BADDIEMAXSPEED),
+						'angle': random.randint(-5,5),
 						'surface':pygame.transform.scale(baddieImage, (BADDIESIZE, BADDIESIZE)),
 						}
 
@@ -263,7 +272,9 @@ while True:
 		# Move the baddies down.
 		for b in baddies:
 			if not reverseCheat and not slowCheat:
-				b['rect'].move_ip(0, b['speed'])
+				b['rect'].move_ip(b['angle'], b['speed'])
+				if (b['rect'].left < 0) or (b['rect'].right > WINDOWWIDTH):
+					b['angle'] *= -1
 			elif reverseCheat:
 				b['rect'].move_ip(0, -5)
 			elif slowCheat:
@@ -306,7 +317,7 @@ while True:
 		# Delete baddies that have fallen past the bottom and lower health of base.
 		for b in baddies[:]:
 			if b['rect'].top > WINDOWHEIGHT:
-				hurt = True
+				baseHurt = True
 				baseHealth -= 1
 				baddies.remove(b)
 
@@ -328,6 +339,14 @@ while True:
 				pygame.draw.line(windowSurface, (255, 255, 255), backgroundList[b].bottomleft, backgroundList[b].bottomright)
 				pygame.draw.line(windowSurface, (255, 255, 255), backgroundList[b].topleft, backgroundList[b].bottomright)
 				pygame.draw.line(windowSurface, (255, 255, 255), backgroundList[b].bottomleft, backgroundList[b].topright)
+		
+		#draw base
+		if baseHurt:
+			baseHurtSound.play()
+			windowSurface.blit(baseHurtScaled, (0, WINDOWHEIGHT-WINDOWHEIGHT/2))
+			baseHurt = False
+		else:
+			windowSurface.blit(baseScaled, (0, WINDOWHEIGHT-WINDOWHEIGHT/2))
 		
 		# Draw explosions of killed baddies
 		for k in killedBaddies[:]:
@@ -351,9 +370,10 @@ while True:
 				if k['count'] == 5:	
 					killedBaddies.remove(k)
 
-		# Draw the player's rectangle
+		# Draw the player's image
 		if not invincible or (invincible and invincibleTime%2 == 0):
 			windowSurface.blit(playerImage, (playerRect.left - (playerRect.width / 2) , playerRect.top - (playerRect.height / 2)))
+				
 		if debug:
 			pygame.draw.rect(windowSurface, (0, 0, 255), playerRect)
 
@@ -368,9 +388,20 @@ while True:
 			windowSurface.blit(laserImage, b)
 			
 		# Draw the score and top score.
-		drawText('Score: %s High: %s' % (score, highScore), font, TEXTCOLOR, windowSurface, 10, 0)
-		drawText('HP: %s Base HP: %s' % (playerHealth, baseHealth), font, TEXTCOLOR, windowSurface, 10, 35)
-		drawText('Kills: %s' % (kills), font, TEXTCOLOR, windowSurface, 10, 70)
+		drawText('Score: %s High: %s' % (score, highScore), hudFont, TEXTCOLOR, windowSurface, 10, 0)
+		
+		#Draw player HP Bar
+		pygame.draw.rect(windowSurface, (255,0,0), (10,25, playerHealth*HPWIDTH/PLAYERHEALTH, 20))
+		pygame.draw.rect(windowSurface, (128,128,128), (10,25, HPWIDTH, 20), 2)
+		drawText('HP: %s/%s' % (playerHealth, PLAYERHEALTH), hudFont, (255,255,255), windowSurface, 15, 25)
+		
+		#Draw Base HP Bar
+		pygame.draw.rect(windowSurface, (0,255,0), (10,50, baseHealth*HPWIDTH/BASEHEALTH, 20))
+		pygame.draw.rect(windowSurface, (128,128,128), (10,50, HPWIDTH, 20), 2)
+		drawText('HP: %s/%s' % (baseHealth, BASEHEALTH), hudFont, (255,255,255), windowSurface, 15, 50)
+		
+		#drawText('HP: %s Base HP: %s' % (playerHealth, baseHealth), font, TEXTCOLOR, windowSurface, 10, 35)
+		#drawText('Kills: %s' % (kills), font, TEXTCOLOR, windowSurface, 10, 70)
 		if debug:
 			# Shows extra debugging line under the score, change shown variables as needed
 			drawText('%r %r %r %r %r' % (toNextLevel, addNewBaddieRate, baddieAddCounter, len(baddies), len(bullets)), font, EXPLOSIONTEXTCOLOR, windowSurface, 10, 140)
