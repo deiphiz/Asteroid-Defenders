@@ -1,8 +1,10 @@
-EPIC SPACE SHOOTER
+ASTEROID DEFENDERS
 ==================
 
-This is a simple, *ahem*, EPIC space shooter. This was the first thing I programmed myself outside of the scope of a book or a tutorial, so the code is not exactly the best.
+This is a simple space shooter. This was the first thing I programmed myself outside of the scope of a book or a tutorial, so the code is not exactly the best.
 
-Included are three versions. One is the original, the second is a version with my implemented acceleration movement, and the third is playable with a game controller.
+Keep the asteroids from attacking your base, but try not to get destroyed yourself!
 
-I probably won't be touching this code ever again, so...
+Controls:
+Arrow Keys - Move
+Spacebar - Shoot

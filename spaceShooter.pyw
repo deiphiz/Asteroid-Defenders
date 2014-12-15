@@ -11,17 +11,19 @@ BULLETSPEED = 20 # I wouldn't set this any higher than BADDIECOLLISION
 BULLETRATE = 8 # Setting this too low causes the program to crash when firing large barrages of bullets. Not sure why yet.
 MAXBULLETS = 20
 BADDIESIZE = 90
-BADDIECOLLISION = 45 # Remember that setting this lower will reduce stupid player collision, but will also make baddies harder to hit
+BADDIECOLLISION = 60 # Remember that setting this lower will reduce stupid player collision, but will also make baddies harder to hit
 PLAYERCOLLISION = 45 # Also don't set these higher than the size of the player/baddies or the collision box will be OUTSIDE the sprite
-BADDIEMINSPEED = 3
-BADDIEMAXSPEED = 9
-MAXBADDIES = 20
+INVINCIBLETIME = 60
 EXPLOSIONSIZE = 48
+BADDIEMINSPEED = 4
+BADDIEMAXSPEED = 6
+MAXBADDIES = 15
+PLAYERHEALTH = 5
+BASEHEALTH = 20
+PLAYERMOVERATE = 14
 BACKGROUNDSCROLLRATE = 1
-DIFFICULTY = (30, 3) #First is initial rate of spawn, second is how much is subtracted when moving to next level
-PLAYERACCEL = 1
-PLAYERDEACCEL = 1
-MAXSPEED = 16
+DIFFICULTY = (30, 3, 5) #First is initial rate of spawn, second is how much is subtracted when moving to next level, last is lowest rate
+SCORERATE = 15
 
 def terminate():
 	pygame.quit()
@@ -54,21 +56,29 @@ pygame.init()
 mainClock = pygame.time.Clock()
 windowSurface = pygame.display.set_mode((WINDOWWIDTH, WINDOWHEIGHT), (HWSURFACE|DOUBLEBUF), 32)
 pygame.display.set_icon(pygame.image.load('data\\player.png'))
-pygame.display.set_caption('EPIC SPACE SHOOTER')
+pygame.display.set_caption('Asteroid Defender')
 pygame.mouse.set_visible(False)
 
 # set up font
-font = pygame.font.SysFont("OCR A Extended", 30)
+font = pygame.font.SysFont("OCR A Extended", 24)
+titleFont = pygame.font.SysFont("OCR A Extended", 32)
+
 
 # set up sounds
 gameOverSound = pygame.mixer.Sound('data\\gameover.wav')
+gameOverSound.set_volume(0.2)
 laserSound = pygame.mixer.Sound('data\\laser.wav')
+laserSound.set_volume(0.1)
 explosionSound = pygame.mixer.Sound('data\\explosion.wav')
-explosionSound.set_volume(0.7)
-pygame.mixer.music.load('data\\music.ogg')
+explosionSound.set_volume(0.075)
+hurtSound = pygame.mixer.Sound('data\\hurt.wav')
+hurtSound.set_volume(0.2)
+pygame.mixer.music.load('data\\music2.ogg')
+pygame.mixer.music.set_volume(0.2)
 
 # set up images
 playerImage = pygame.image.load('data\\player.png')
+playerHurtImage = pygame.image.load('data\\playerhurt.png')
 playerRect = pygame.Rect(0, 0, PLAYERCOLLISION, PLAYERCOLLISION)
 baddieImage = pygame.image.load('data\\baddie.png')
 background = pygame.image.load('data\\background.jpg')
@@ -82,23 +92,22 @@ explosionFrame2Scaled = pygame.transform.scale(explosionFrame2, (EXPLOSIONSIZE, 
 
 # show the "Start" screen
 windowSurface.blit(backgroundScaled, (0, 0))
-drawText('EPIC SPACE SHOOTER', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3))
-drawText('Use the arrow keys to move,', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 40)
-drawText('Press the spacebar to shoot! ', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 80)
-drawText('Press any key to start...', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 120)
+drawText('--ASTEROID DEFENDER--', titleFont, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3))
+drawText('Defend your base from the asteroids!', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 40)
+drawText('Use the arrow keys to move,', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 80)
+drawText('Press the spacebar to shoot! ', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 120)
+drawText('Press any key to start...', font, TEXTCOLOR, windowSurface, 20, (WINDOWHEIGHT / 3) + 160)
 pygame.display.update()
 waitForPlayerToPressKey()
 
-# Set up player movement variables
-playerSpeedX = 0
-playerSpeedY = 0
-dirX = 0
-dirY = 0
-accelx = False
-accely = False
+#set up high score
+with open('highscore', 'w+') as f:
+	f.seek(0)
+	if f.read() == '':
+		f.write('10000')
+	f.seek(0)
+	highScore = int(f.read())
 
-
-topScore = 0
 while True:
 	# set up the start of the game
 	baddies = []
@@ -107,9 +116,16 @@ while True:
 	killedBaddies = []
 	trigger = False
 	score = 0
+	scoreCounter = 0
 	kills = 0
-	toNextLevel = 1
+	baddiesCrossed = 0
+	toNextLevel = 20
 	playerRect.topleft = (WINDOWWIDTH / 2, WINDOWHEIGHT - 50)
+	playerHealth = PLAYERHEALTH
+	baseHealth = BASEHEALTH
+	hurt = False
+	invincible = False
+	invincibleTime = INVINCIBLETIME
 	moveLeft = moveRight = moveUp = moveDown = False
 	reverseCheat = slowCheat = False
 	baddieAddCounter = 0
@@ -120,7 +136,16 @@ while True:
 	debug = False
 
 	while True: # the game loop runs while the game part is playing
-		score += 1 # increase score
+	
+		#increase score
+		scoreCounter += 1
+		if scoreCounter >= SCORERATE:
+			score += 5
+			scoreCounter = 0
+		
+		#set high score
+		if score >= highScore:
+			highScore = score
 
 		for event in pygame.event.get():
 			if event.type == QUIT:
@@ -131,18 +156,18 @@ while True:
 					reverseCheat = True
 				if event.key == ord('x'):
 					slowCheat = True
-				if event.key == K_LEFT:
-					accelx = True
-					dirX = -1
-				if event.key == K_RIGHT:
-					accelx = True
-					dirX = 1
-				if event.key == K_UP:
-					accely = True
-					dirY = -1
-				if event.key == K_DOWN:
-					accely = True
-					dirY = 1
+				if event.key == K_LEFT or event.key == ord('a'):
+					moveRight = False
+					moveLeft = True
+				if event.key == K_RIGHT or event.key == ord('d'):
+					moveLeft = False
+					moveRight = True
+				if event.key == K_UP or event.key == ord('w'):
+					moveDown = False
+					moveUp = True
+				if event.key == K_DOWN or event.key == ord('s'):
+					moveUp = False
+					moveDown = True
 				if event.key == K_SPACE:
 					trigger = True
 
@@ -156,12 +181,14 @@ while True:
 				if event.key == K_ESCAPE:
 						terminate()
 
-				if event.key == K_LEFT or event.key == K_RIGHT:
-					accelx = False
-					dirX = 0
-				if event.key == K_UP or event.key == K_DOWN:
-					accely = False
-					dirY = 0
+				if event.key == K_LEFT or event.key == ord('a'):
+					moveLeft = False
+				if event.key == K_RIGHT or event.key == ord('d'):
+					moveRight = False
+				if event.key == K_UP or event.key == ord('w'):
+					moveUp = False
+				if event.key == K_DOWN or event.key == ord('s'):
+					moveDown = False
 				if event.key == K_SPACE:
 					trigger = False
 					
@@ -174,9 +201,18 @@ while True:
 					# Toggle debugging mode
 					debug = not debug
 
+			if event.type == MOUSEMOTION:
+				# If the mouse moves, move the player where the cursor is.
+				playerRect.move_ip(event.pos[0] - playerRect.centerx, event.pos[1] - playerRect.centery)
+			
+			if event.type == MOUSEBUTTONDOWN:
+				trigger = True
+			if event.type == MOUSEBUTTONUP:
+				trigger = False
+		
 		# Add new baddies at the top of the screen, if needed.
 		baddieAddCounter += 1
-		if baddieAddCounter == addNewBaddieRate and len(baddies) < MAXBADDIES:
+		if baddieAddCounter >= addNewBaddieRate and len(baddies) < MAXBADDIES:
 			baddieAddCounter = 0
 			newBaddie = {'rect': pygame.Rect(random.randint(0, WINDOWWIDTH-BADDIESIZE), 0 - BADDIESIZE, BADDIECOLLISION, BADDIECOLLISION),
 						'speed': random.randint(BADDIEMINSPEED, BADDIEMAXSPEED),
@@ -197,54 +233,16 @@ while True:
 		backgroundList[0].bottom = backgroundList[1].top
 
 		# Move the player around.
-		if accelx:
-			if playerSpeedX != MAXSPEED and playerSpeedX != -MAXSPEED:
-				playerSpeedX += PLAYERACCEL * dirX
-		if accely:
-			if playerSpeedY != MAXSPEED and playerSpeedY != -MAXSPEED:
-				playerSpeedY += PLAYERACCEL * dirY
-				
-		# Here's where we deaccelerate the player
-		if not accelx:
-			if playerSpeedX > 0:
-				playerSpeedX -= PLAYERDEACCEL
-				# Gotta make sure we don't get stuck in a addition-subtraction
-				# loop if the speed goes higher/lower than 0.
-				if playerSpeedX < 0:
-					playerSpeedX = 0
-			if playerSpeedX < 0:
-				playerSpeedX += PLAYERDEACCEL
-				if playerSpeedX > 0:
-					playerSpeedX = 0
-		if not accely:
-			if playerSpeedY > 0:
-				playerSpeedY -= PLAYERDEACCEL
-				if playerSpeedY < 0:
-					playerSpeedY = 0
-			if playerSpeedY < 0:
-				playerSpeedY += PLAYERDEACCEL
-				if playerSpeedY > 0:
-					playerSpeedY = 0
-		
-		playerRect.left += playerSpeedX
-		# Not the most elegant way to stop the player from leaving the screen
-		# but like I said, it works.
-		if playerRect.left < 0:
-			playerRect.left = 0
-			playerSpeedX = 0
-		if playerRect.right > WINDOWWIDTH:
-			playerRect.right = WINDOWWIDTH
-			playerSpeedX = 0
-
-		playerRect.top += playerSpeedY
-		if playerRect.bottom > WINDOWHEIGHT:
-			playerRect.bottom = WINDOWHEIGHT
-			playerSpeedY = 0
-		if playerRect.top < 0:
-			playerRect.top = 0
-			playerSpeedY = 0
+		if moveLeft and playerRect.left > 0:
+			playerRect.move_ip(-1 * PLAYERMOVERATE, 0)
+		if moveRight and playerRect.right < WINDOWWIDTH:
+			playerRect.move_ip(PLAYERMOVERATE, 0)
+		if moveUp and playerRect.top > 0:
+			playerRect.move_ip(0, -1 * PLAYERMOVERATE)
+		if moveDown and playerRect.bottom < WINDOWHEIGHT:
+			playerRect.move_ip(0, PLAYERMOVERATE)
 			
-		# Add bullets while shoot button is held down
+		# Add bullets while mouse button is held down
 		if trigger and len(bullets) < MAXBULLETS:
 			bulletCounter += 1
 			if bulletCounter == BULLETRATE:
@@ -254,6 +252,9 @@ while True:
 				bulletCounter = 0
 		if not trigger:
 			bulletCounter = BULLETRATE - 1
+
+		# Move the mouse cursor to match the player.
+		pygame.mouse.set_pos(playerRect.centerx, playerRect.centery)
 		
 		# Move Background
 		for b in backgroundList:
@@ -281,21 +282,39 @@ while True:
 					baddies.remove(a)
 					score += 100
 					kills += 1
-					if kills == toNextLevel and addNewBaddieRate > DIFFICULTY[1]:
+					if kills == toNextLevel and addNewBaddieRate > DIFFICULTY[2]:
 						baddieAddCounter = 0
 						addNewBaddieRate -= DIFFICULTY[1]
+						if addNewBaddieRate < DIFFICULTY[2]:
+							addNewBaddieRate = DIFFICULTY[2]
 						toNextLevel *= 2
 					explosionSound.play()
 		
-		# Delete baddies that have fallen past the bottom.
+		#Check if player hit baddie and lower health of player.
+		if playerHasHitBaddie(playerRect, baddies) and not invincible:
+			playerHealth -= 1
+			hurt = True
+			invincible = True
+			
+		#Lower invincible time if true.
+		if invincible and invincibleTime > 0:
+			invincibleTime -= 1
+		elif invincibleTime <= 0:
+			invincible = False
+			invincibleTime = INVINCIBLETIME
+		
+		# Delete baddies that have fallen past the bottom and lower health of base.
 		for b in baddies[:]:
 			if b['rect'].top > WINDOWHEIGHT:
+				hurt = True
+				baseHealth -= 1
 				baddies.remove(b)
 
 		# Delete bullets that have flown past the top.
 		for b in bullets[:]:
 			if b.bottom < -BADDIESIZE:
 				bullets.remove(b)
+				
 		
 		# Draw the game world on the window.
 		#windowSurface.fill(BACKGROUNDCOLOR)
@@ -333,13 +352,14 @@ while True:
 					killedBaddies.remove(k)
 
 		# Draw the player's rectangle
-		windowSurface.blit(playerImage, (playerRect.left - (playerRect.width / 2) , playerRect.top - (playerRect.height / 2)))
+		if not invincible or (invincible and invincibleTime%2 == 0):
+			windowSurface.blit(playerImage, (playerRect.left - (playerRect.width / 2) , playerRect.top - (playerRect.height / 2)))
 		if debug:
 			pygame.draw.rect(windowSurface, (0, 0, 255), playerRect)
 
 		# Draw each baddie
 		for b in baddies:
-			windowSurface.blit(b['surface'], (b['rect'].left - (b['rect'].width / 2), b['rect'].top - (b['rect'].height / 2)))
+			windowSurface.blit(b['surface'], (b['rect'].left - ((BADDIESIZE - BADDIECOLLISION) / 2), b['rect'].top - ((BADDIESIZE - BADDIECOLLISION) / 2)))
 			if debug:
 				pygame.draw.rect(windowSurface, (255, 0, 0), b['rect'])
 		
@@ -348,25 +368,34 @@ while True:
 			windowSurface.blit(laserImage, b)
 			
 		# Draw the score and top score.
-		drawText('Score: %s' % (score), font, TEXTCOLOR, windowSurface, 10, 0)
-		drawText('Kills: %s' % (kills), font, TEXTCOLOR, windowSurface, 10, 35)
-		drawText('Top Score: %s' % (topScore), font, TEXTCOLOR, windowSurface, 10, 70)
+		drawText('Score: %s High: %s' % (score, highScore), font, TEXTCOLOR, windowSurface, 10, 0)
+		drawText('HP: %s Base HP: %s' % (playerHealth, baseHealth), font, TEXTCOLOR, windowSurface, 10, 35)
+		drawText('Kills: %s' % (kills), font, TEXTCOLOR, windowSurface, 10, 70)
 		if debug:
 			# Shows extra debugging line under the score, change shown variables as needed
-			drawText('%r %r %r %r %r' % (toNextLevel, addNewBaddieRate, baddieAddCounter, len(baddies), len(bullets)), font, EXPLOSIONTEXTCOLOR, windowSurface, 10, 105)
+			drawText('%r %r %r %r %r' % (toNextLevel, addNewBaddieRate, baddieAddCounter, len(baddies), len(bullets)), font, EXPLOSIONTEXTCOLOR, windowSurface, 10, 140)
+		
+		# Check if game state should be over
+		if (playerHealth == 0) or (baseHealth == 0):
+			with open('highscore', 'w+') as f:
+				f.write(str(highScore))
+			break		
+		
+		# Flash the screen if hurt
+		if hurt:
+			hurtSound.play()
+			pygame.draw.rect(windowSurface, (255, 0, 0), (0, 0, WINDOWWIDTH, WINDOWHEIGHT))
+			hurt = False
 
 		pygame.display.update()
-
-		# Check if any of the baddies have hit the player.
-		if playerHasHitBaddie(playerRect, baddies):
-			if score > topScore:
-				topScore = score # set new top score
-			break
-
 		mainClock.tick(FPS)
 
-	# Stop the game and show the "Game Over" screen.
+	# Stop the game and show the "Game Over" animation and screen.
 	pygame.mixer.music.stop()
+	windowSurface.fill((255,0,0))
+	windowSurface.blit(playerHurtImage, (playerRect.left - (playerRect.width / 2) , playerRect.top - (playerRect.height / 2)))
+	pygame.display.update()
+	hurtSound.play()
 	gameOverSound.play()
 	pygame.time.wait(3000)
 	windowSurface.fill(BACKGROUNDCOLOR)
